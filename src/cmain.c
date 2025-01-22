@@ -32,10 +32,9 @@ SCIP_RETCODE readArguments(
    char**       outputFile,          /**< output file (e.g. outputfile.json) */
    char**       solutionFile,        /**< path of solution file */
    int*         delayTolerance,      /**< delayTolerance, in other words: appointment window length */
-   double*      weightObjective,      /**< weight for balancing the two objective functions */
    int*         gamma,                /**< robustness factor Gamma */
    double*      alphas,               /**< objective function parameters */
-   char**       simexout,
+   char**       stats_file,
    SCIP_Bool*   veAssBranching
    )
 {
@@ -52,19 +51,19 @@ SCIP_RETCODE readArguments(
    /* init usage text */
    status = snprintf(usage, SCIP_MAXSTRLEN - 1,
       "usage: %s <path of inputfile> \
-      [-w <appointment window length in sec (mandatory)>] \
-      [-c <objective function weigth in [0,1] (0 = worktime, 1 = delay(default)) (mandatory)>] \
+      [-w <appointment window length in sec (optional; default 0)>] \
       [-o <output json file (optional; default used if no name is provided)>] \
-      [-s <input solution json file (mandatory)>] \
+      [-s <input solution json file (optional)>] \
+      [-v <activate vehicle-assignment branching (optional)>]\
       [-a <objective function parameters (delay, travel time, encounter probability) (default: 1, 0, 0) (mandatory) >\
-      [-g <value for Gamma (mandatory)>]", argv[0]);
+      [-g <value for Gamma (optional; default 0)>]", argv[0]);
    assert( 0 <= status && status < SCIP_MAXSTRLEN );
 
    /* init arguments */
    *inputFile = NULL;
    *outputFile = NULL;
    *solutionFile = NULL;
-   *simexout = NULL;
+   *stats_file = NULL;
 
    /* set default alphas */
    alphas[0] = 1.0;
@@ -104,27 +103,6 @@ SCIP_RETCODE readArguments(
          }
          free(locstr);
       }
-      /* check for (optional) objective function weigth */
-      if ( ! strcmp(argv[i], "-c"))
-      {
-         if( i == argc - 1 || (! strncmp(argv[i+1], "-",1)))
-         {
-            fprintf(stderr, "Missing objective function weigth. ");
-            SCIPerrorMessage("%s\n", usage);
-            return SCIP_ERROR;
-         }
-         i++;
-         locstr = (char *) malloc ( (int)strlen(argv[i]) * sizeof(char) +1 );
-         strcpy(locstr, argv[i]);
-         *weightObjective = atof(locstr);
-         if(*weightObjective < 0 || *weightObjective > 1)
-         {
-            fprintf(stderr, "Invalid objective function weigth -> Choose from interval [0, 1]. ");
-            SCIPerrorMessage("%s\n", usage);
-            return SCIP_ERROR;
-         }
-         free(locstr);
-      }
       /* check for (output) output file */
       if ( ! strcmp(argv[i], "-o") )
       {
@@ -145,20 +123,20 @@ SCIP_RETCODE readArguments(
       }
        if ( ! strcmp(argv[i], "-output") )
        {
-           assert( *simexout == NULL );
-           *simexout = (char *) malloc ( (int) SCIP_MAXSTRLEN * sizeof(char) );
+           assert( *stats_file == NULL );
+           *stats_file = (char *) malloc ( (int) SCIP_MAXSTRLEN * sizeof(char) );
            if ( ( i == argc-1 ) || (! strncmp(argv[i+1], "-",1)) )
            {
-               sprintf(strbuffer, "simexout.csv");
-               strcpy(*simexout,strbuffer);
+               sprintf(strbuffer, "stats_file.csv");
+               strcpy(*stats_file,strbuffer);
            }
            else
            {
                i++;
-               strcpy(*simexout,argv[i]);
+               strcpy(*stats_file,argv[i]);
                assert( i < argc );
            }
-           assert( *simexout != NULL );
+           assert( *stats_file != NULL );
        }
        if ( ! strcmp(argv[i], "-s") )
        {
@@ -224,7 +202,6 @@ SCIP_RETCODE readArguments(
                }
                free(locstr);
            }
-
        }
        if ( ! strcmp(argv[i], "-v") )
        {
@@ -461,12 +438,11 @@ SCIP_RETCODE runColumnGenerationModel(
    char* outputfile = NULL;
    char* solutionfile = NULL;
    int delayTolerance = 0;
-   double weightObjective = 1.0;
-   int gamma = -1;
+   int gamma = 0;
    double* alphas;
    SCIP_Bool* optionalCustomers = NULL;
    int i;
-   char* simexout = NULL;
+   char* stats_file = NULL;
    SCIP_Bool veAssBranching = FALSE;
 
    alphas = malloc(3*sizeof(double));
@@ -476,8 +452,8 @@ SCIP_RETCODE runColumnGenerationModel(
     *********/
 
 
-   SCIP_CALL( readArguments(argc, argv, &inputfile, &outputfile, &solutionfile, &delayTolerance, &weightObjective,
-                            &gamma, alphas, &simexout, &veAssBranching) );
+   SCIP_CALL( readArguments(argc, argv, &inputfile, &outputfile, &solutionfile, &delayTolerance,
+                            &gamma, alphas, &stats_file, &veAssBranching) );
    assert(inputfile != NULL);
 
     SCIP_CALL( setUpScip(&scip, veAssBranching));
@@ -548,7 +524,6 @@ SCIP_RETCODE runColumnGenerationModel(
     ***********************/
 
    SCIP_CALL( SCIPsolve(scip) );
-   probdata = SCIPgetProbData(scip);
 
    /********************
     * Print Solution
@@ -568,44 +543,16 @@ SCIP_RETCODE runColumnGenerationModel(
    }
 
    /** PRINT SIMEX STATS */
-    if(simexout != NULL){
-        /* instancen name */
-        // Find the last occurrence of '/'
-       char* instance = strrchr(inputfile, '/');
-        if (instance != NULL) {
-            instance++; // Move past the last '/'
-        } else {
-            instance = inputfile; // No '/' found, use the whole string
-        }
-
-        // Remove the ".dat" extension
-        char *dot = strrchr(instance, '.');
-        if (dot != NULL) {
-            *dot = '\0'; // Terminate the string at the last '.'
-        }
-
-        char prefix[50];  // Buffer to store the prefix
-        int r, d;
-        float w;
-        // Use sscanf to extract the prefix and the numbers
-        if (sscanf(instance, "%[^_]_r%d_d%d_w%f", prefix, &r, &d, &w) == 4) {
-            printf("Prefix = %s\n", prefix);
-            printf("r = %d\n", r);
-            printf("d = %d\n", d);
-            printf("w = %.1f\n", w);
-        } else {
-            printf("Failed to parse the string.\n");
-        }
-
+    if(stats_file != NULL){
         FILE *fp;
-        fp = fopen(simexout, "a");
+        fp = fopen(stats_file, "a");
         if (fp == NULL)
         {
-            SCIPwarningMessage(scip, "Can't open outputfile: %s\n", simexout);
+            SCIPwarningMessage(scip, "Can't open outputfile: %s\n", stats_file);
             return SCIP_WRITEERROR;
         }
         fprintf(fp, "instance,r,d,w,nVars,Dualbound,Primalbound,Gap,nNodes,SolvingTime\n");
-        fprintf(fp, "%s,%d,%d,%.2f,%d,%.3f,%.3f,%.3f,%lld,%.3f\n", prefix, r, d, w, SCIPgetNVars(scip), SCIPgetDualbound(scip),
+        fprintf(fp, "%s,%d,%.3f,%.3f,%.3f,%lld,%.3f\n", inputfile, SCIPgetNVars(scip), SCIPgetDualbound(scip),
                 SCIPgetPrimalbound(scip), SCIPgetGap(scip) *100, SCIPgetNNodes(scip), SCIPgetSolvingTime(scip));
 
         fclose(fp);
@@ -655,8 +602,6 @@ SCIP_RETCODE runColumnGenerationModel(
       }
       SCIP_CALL( SCIPfree(&scipRecovery) );
    }
-
-
 
    /********************
     * Deinitialization *

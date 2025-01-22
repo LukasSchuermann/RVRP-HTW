@@ -15,7 +15,6 @@
 #define PRINT_GENERATED_TOURS       FALSE       /* SCIP_BOOL,  print all generated tours to console, this does not significantly effects the runtime of SCIP*/
 #define PRINT_EXACT_LABELING        FALSE       /* SCIP_BOOL,  if true, debug information for exact labeling is printed */
 #define ADD_LABELS_POSITIVE_COST    FALSE       /* SCIP_BOOL,  if true, the labels with smallest, positive reduced costs are added if there are none with negative cost */
-#define COMPACT_FORMULATION         FALSE       /* SCIP_BOOL,  if true, apply compact formulation pricing */
 
 #define SAME_OBJECTIVES             TRUE        /* SCIP_BOOL,  if true, all customer dependent values for the objective function will be set to 1.0 */
 #define PARALLEL_LABELING           TRUE        /* SCIP_BOOL,  if true, the exact labeling algorithm will be executed in parallel with each day as a different thread */
