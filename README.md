@@ -5,7 +5,7 @@ It is implementend in C using the MINLP solver SCIP.
 
 ## Requirements
 
-To run, this codes needs an installation of SCIP version 9.1.1 or higher. Env_Variable "SCIP_DIR" shall contain the path to the SCIP installation.
+To run, this codes needs an installation of SCIP (we used version 9.1.1). Env_Variable "SCIP_DIR" shall contain the path to the SCIP installation.
 See the website for an installation guide:
 https://scipopt.org/#scipoptsuite
 
